@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true
+  },
+  "projects": {
+    "database": {
+      "type": "library",
+      "root": "libs/database",
+      "entryFile": "index",
+      "sourceRoot": "libs/database/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/database/tsconfig.lib.json"
+      }
+    },
+    "lofty": {
+      "type": "library",
+      "root": "libs/lofty",
+      "entryFile": "index",
+      "sourceRoot": "libs/lofty/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/lofty/tsconfig.lib.json"
+      }
+    },
+    "realt": {
+      "type": "library",
+      "root": "libs/realt",
+      "entryFile": "index",
+      "sourceRoot": "libs/realt/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/realt/tsconfig.lib.json"
+      }
+    }
+  }
+}

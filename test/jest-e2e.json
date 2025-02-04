@@ -1,0 +1,21 @@
+{
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "@app/database": "<rootDir>/../libs/database/src",
+    "@app/database/(.*)": "<rootDir>/../libs/database/src/$1",
+    "@app/lofty": "<rootDir>/../libs/lofty/src",
+    "@app/lofty/(.*)": "<rootDir>/../libs/lofty/src/$1",
+    "@app/realt": "<rootDir>/../libs/realt/src",
+    "@app/realt/(.*)": "<rootDir>/../libs/realt/src/$1"
+  }
+}
