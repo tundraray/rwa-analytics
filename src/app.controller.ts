@@ -1,14 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
-import { LoftyService } from '@app/lofty';
-import { RealtService } from '@app/realt';
+import { OceanpointService } from '@app/blockchain-apps/oceanpoint';
 
 @Controller()
 export class AppController {
   constructor(
     private readonly appService: AppService,
-    private readonly loftyService: LoftyService,
-    private readonly realtService: RealtService,
+    private readonly oceanpointService: OceanpointService,
   ) {}
 
   @Get()
@@ -16,14 +14,8 @@ export class AppController {
     return this.appService.getHello();
   }
 
-  @Get('lofty')
-  getLofty() {
-    // return this.loftyService.getTransaction();
-    return this.loftyService.updateLofty();
-  }
-
-  @Get('realtoken')
-  getRealToken() {
-    return this.realtService.sync();
+  @Get('oceanpoint')
+  getOceanpoint(): Promise<void> {
+    return this.oceanpointService.syncHolders();
   }
 }

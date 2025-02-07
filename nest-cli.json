@@ -7,6 +7,33 @@
     "webpack": true
   },
   "projects": {
+    "binaryx": {
+      "type": "library",
+      "root": "libs/binaryx",
+      "entryFile": "index",
+      "sourceRoot": "libs/binaryx/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/binaryx/tsconfig.lib.json"
+      }
+    },
+    "blockchain-apps": {
+      "type": "library",
+      "root": "libs/blockchain-apps",
+      "entryFile": "index",
+      "sourceRoot": "libs/blockchain-apps/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/blockchain-apps/tsconfig.lib.json"
+      }
+    },
+    "common": {
+      "type": "library",
+      "root": "libs/common",
+      "entryFile": "index",
+      "sourceRoot": "libs/common/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/common/tsconfig.lib.json"
+      }
+    },
     "database": {
       "type": "library",
       "root": "libs/database",
@@ -32,6 +59,15 @@
       "sourceRoot": "libs/realt/src",
       "compilerOptions": {
         "tsConfigPath": "libs/realt/tsconfig.lib.json"
+      }
+    },
+    "sync": {
+      "type": "library",
+      "root": "libs/sync",
+      "entryFile": "index",
+      "sourceRoot": "libs/sync/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/sync/tsconfig.lib.json"
       }
     }
   }

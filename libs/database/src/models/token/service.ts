@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { TokenModel, TOKENS_REPOSITORY } from './entity';
+import { Op } from 'sequelize';
 
 @Injectable()
 export class TokenService {
@@ -13,22 +14,39 @@ export class TokenService {
     private tokenModel: typeof TokenModel,
   ) {}
 
-  async findOrCreate(token: {
-    tokenId: string;
-    network: string;
-    name: string;
-    isGlobalToken: boolean;
-    totalSupply: bigint | number;
-    description: string;
-    decimals: number;
-    creator: string;
-  }): Promise<TokenModel> {
-    const [tokenModel]: [TokenModel, boolean] =
+  async findOrCreate(token: Partial<TokenModel>): Promise<TokenModel> {
+    const [tokenModel, created]: [TokenModel, boolean] =
       await this.tokenModel.findOrCreate({
-        where: { tokenId: token.tokenId.toString(), network: token.network },
+        where: {
+          tokenAddress: token.tokenAddress,
+          network: token.network,
+        },
         defaults: token,
       });
 
+    if (!created) {
+      await tokenModel.update(token);
+    }
+
     return tokenModel;
+  }
+
+  async listLastSyncedTokens(applicationId: number) {
+    const tokens = await this.tokenModel.findAll({
+      where: {
+        applicationId,
+        lastSyncedAt: { [Op.lt]: new Date(Date.now() - 1 * 60 * 60 * 1000) },
+      },
+      order: [['lastSyncedAt', 'DESC']],
+      limit: 100,
+    });
+    return tokens;
+  }
+
+  async updateLastSyncedAt(id: number) {
+    await this.tokenModel.update(
+      { lastSyncedAt: new Date() },
+      { where: { id } },
+    );
   }
 }

@@ -18,6 +18,24 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
+      "@app/binaryx": [
+        "libs/binaryx/src"
+      ],
+      "@app/binaryx/*": [
+        "libs/binaryx/src/*"
+      ],
+      "@app/blockchain-apps": [
+        "libs/blockchain-apps/src"
+      ],
+      "@app/blockchain-apps/*": [
+        "libs/blockchain-apps/src/*"
+      ],
+      "@app/common": [
+        "libs/common/src"
+      ],
+      "@app/common/*": [
+        "libs/common/src/*"
+      ],
       "@app/database": [
         "libs/database/src"
       ],
@@ -35,6 +53,12 @@
       ],
       "@app/realt/*": [
         "libs/realt/src/*"
+      ],
+      "@app/sync": [
+        "libs/sync/src"
+      ],
+      "@app/sync/*": [
+        "libs/sync/src/*"
       ]
     }
   }

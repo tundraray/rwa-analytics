@@ -1,10 +1,15 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-import { HolderService, TokenService, TransactionService } from '@app/database';
+import {
+  HolderService,
+  TokenModel,
+  TokenService,
+  TransactionService,
+} from '@app/database';
 import { Injectable } from '@nestjs/common';
 import { Indexer } from 'algosdk';
 import { Transaction } from 'algosdk/dist/types/client/v2/indexer/models/types';
 import Bottleneck from 'bottleneck';
 import { setGlobalDispatcher, Agent } from 'undici';
+import { ISyncService } from './types';
 
 setGlobalDispatcher(
   new Agent({
@@ -28,7 +33,7 @@ const LoftyAddress =
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 @Injectable()
-export class LoftyService {
+export class LoftyService implements ISyncService {
   private indexerClient: Indexer;
   private limiter: Bottleneck;
   private indexerLimiter: Bottleneck;
@@ -47,12 +52,14 @@ export class LoftyService {
       minTime: 20,
     });
   }
-  private serializeResponse(data: any) {
-    return JSON.parse(
-      JSON.stringify(data, (_, value) =>
-        typeof value === 'bigint' ? value.toString() : value,
-      ),
-    );
+
+  async syncHolders() {
+    const tokens = await this.tokenService.listLastSyncedTokens(1);
+    await Promise.all(tokens.map((token) => this.syncAssetHolders(token)));
+  }
+
+  async syncTokens() {
+    await this.updateLofty();
   }
 
   async getTransaction(
@@ -72,10 +79,12 @@ export class LoftyService {
           return this.limiter.schedule(async () => {
             const decimals = clientAsset.decimals;
             const totalSupply = BigInt(clientAsset.total) || BigInt(0);
-            const token = await this.tokenService.findOrCreate({
-              tokenId: clientAsset.id.toString(),
+            await this.tokenService.findOrCreate({
+              tokenAddress: clientAsset.id.toString(),
+              applicationId: 1,
               network: 'algorand',
               name: clientAsset.name,
+              symbol: clientAsset.symbol,
               isGlobalToken: false,
               totalSupply:
                 decimals > 0
@@ -85,8 +94,6 @@ export class LoftyService {
               decimals: clientAsset.decimals,
               creator: clientAsset.creator,
             });
-            await this.getAllAssetHolders(token.id, clientAsset.id);
-            await this.getAllAssetTransactions(token.id, clientAsset.id);
           });
         }) ?? [],
     );
@@ -128,13 +135,13 @@ export class LoftyService {
     }
   }
 
-  async getAllAssetHolders(tokenId: number, assetId: string) {
+  async syncAssetHolders(token: TokenModel) {
     let nextToken: string | undefined = undefined;
     try {
       do {
         const response = await this.indexerLimiter.schedule(async () => {
           const query = this.indexerClient
-            .lookupAssetBalances(BigInt(assetId))
+            .lookupAssetBalances(BigInt(token.tokenAddress))
             .currencyGreaterThan(0)
             .limit(1000);
           if (nextToken) {
@@ -147,7 +154,7 @@ export class LoftyService {
           response.balances.map(async (balance) => {
             if (balance.address !== LoftyAddress)
               await this.holderService.findOrCreate({
-                tokenId: tokenId,
+                tokenId: token.id,
                 address: balance.address,
                 balance: BigInt(balance.amount),
                 deleted: balance.deleted ?? false,
@@ -159,10 +166,12 @@ export class LoftyService {
 
         nextToken = response.nextToken;
       } while (nextToken);
-      await this.holderService.deleteEmpty(tokenId);
+      await this.holderService.deleteEmpty(token.id);
     } catch (error) {
       console.error('Error fetching all asset holders:', error);
       throw error;
+    } finally {
+      await this.tokenService.updateLastSyncedAt(token.id);
     }
   }
 
@@ -172,6 +181,7 @@ export class LoftyService {
         id: string;
         name: string;
         total: string;
+        symbol: string;
         decimals: number;
         creator: string;
         url?: string;
@@ -196,6 +206,7 @@ export class LoftyService {
           ...response.assets.map((asset) => ({
             id: asset.index.toString(),
             name: asset.params.name ?? '',
+            symbol: asset.params.unitName ?? '',
             total: asset.params.total.toString(),
             decimals: asset.params.decimals,
             creator: asset.params.creator,
@@ -268,7 +279,8 @@ export class LoftyService {
       const decimals = clientAsset.asset.params.decimals;
       const totalSupply = BigInt(clientAsset.asset.params.total) || BigInt(0);
       return await this.tokenService.findOrCreate({
-        tokenId: receiverAssetId,
+        tokenAddress: receiverAssetId,
+        applicationId: 1,
         network: 'algorand',
         name: clientAsset.asset.params.name || '',
         isGlobalToken: false,

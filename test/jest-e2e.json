@@ -11,11 +11,19 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "moduleNameMapper": {
+    "@app/binaryx": "<rootDir>/../libs/binaryx/src",
+    "@app/binaryx/(.*)": "<rootDir>/../libs/binaryx/src/$1",
+    "@app/blockchain-apps": "<rootDir>/../libs/blockchain-apps/src",
+    "@app/blockchain-apps/(.*)": "<rootDir>/../libs/blockchain-apps/src/$1",
+    "@app/common": "<rootDir>/../libs/common/src",
+    "@app/common/(.*)": "<rootDir>/../libs/common/src/$1",
     "@app/database": "<rootDir>/../libs/database/src",
     "@app/database/(.*)": "<rootDir>/../libs/database/src/$1",
     "@app/lofty": "<rootDir>/../libs/lofty/src",
     "@app/lofty/(.*)": "<rootDir>/../libs/lofty/src/$1",
     "@app/realt": "<rootDir>/../libs/realt/src",
-    "@app/realt/(.*)": "<rootDir>/../libs/realt/src/$1"
+    "@app/realt/(.*)": "<rootDir>/../libs/realt/src/$1",
+    "@app/sync": "<rootDir>/../libs/sync/src",
+    "@app/sync/(.*)": "<rootDir>/../libs/sync/src/$1"
   }
 }

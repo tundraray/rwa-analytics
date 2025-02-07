@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { LoftyModule } from '@app/lofty';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from '@app/database';
-import { RealtModule } from '@app/realt';
-
+import { ScheduleModule } from '@nestjs/schedule';
+import { SyncModule } from '@app/sync';
+import { ServiceModule } from '@app/blockchain-apps/service.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -13,8 +13,9 @@ import { RealtModule } from '@app/realt';
       isGlobal: true,
     }),
     DatabaseModule,
-    LoftyModule,
-    RealtModule,
+    ServiceModule,
+    ScheduleModule.forRoot(),
+    SyncModule,
   ],
   controllers: [AppController],
   providers: [AppService],

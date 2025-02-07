@@ -5,18 +5,23 @@ import {
   DataType,
   ForeignKey,
   BelongsTo,
-  CreatedAt,
-  UpdatedAt,
 } from 'sequelize-typescript';
-import { TokenModel } from '../token/entity';
+import { TokenModel } from '../token';
 
 @Table({
   tableName: 'holders',
   underscored: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at',
   indexes: [
     {
-      fields: ['address', 'token_id'],
+      name: 'idx_holders_token_id',
+      fields: ['token_id'],
+    },
+    {
+      name: 'idx_holders_address_token_id',
       unique: true,
+      fields: ['address', 'token_id'],
     },
   ],
 })
@@ -32,14 +37,21 @@ export class HolderModel extends Model {
   @Column({
     type: DataType.INTEGER,
     allowNull: false,
+    field: 'token_id',
   })
   tokenId!: number;
 
   @Column({
-    type: DataType.STRING(50),
+    type: DataType.STRING(100),
     allowNull: false,
   })
   address!: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  url?: string;
 
   @Column({
     type: DataType.BIGINT,
@@ -48,30 +60,34 @@ export class HolderModel extends Model {
   balance!: number;
 
   @Column({
-    type: DataType.BIGINT,
-    allowNull: true,
-    field: 'optedinatround',
+    type: DataType.DATE,
+    allowNull: false,
+    defaultValue: DataType.NOW,
+    field: 'last_synced_at',
   })
-  optedInAtRound: number;
-
-  @Column({
-    type: DataType.BIGINT,
-    allowNull: true,
-    field: 'optedoutatround',
-  })
-  optedOutAtRound: number;
+  lastSyncedAt!: Date;
 
   @Column({
     type: DataType.BOOLEAN,
     allowNull: false,
     defaultValue: false,
   })
-  deleted: boolean;
+  deleted!: boolean;
 
-  @CreatedAt
+  @Column({
+    type: DataType.DATE,
+    allowNull: false,
+    defaultValue: DataType.NOW,
+    field: 'created_at',
+  })
   createdAt!: Date;
 
-  @UpdatedAt
+  @Column({
+    type: DataType.DATE,
+    allowNull: false,
+    defaultValue: DataType.NOW,
+    field: 'updated_at',
+  })
   updatedAt!: Date;
 
   @BelongsTo(() => TokenModel)
