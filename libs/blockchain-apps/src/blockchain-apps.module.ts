@@ -4,6 +4,8 @@ import { RealtService } from './realt/realt.service';
 import { LoftyService } from './lofty.service';
 import { BinaryxService } from './binaryx.service';
 import { OceanpointService } from './oceanpoint';
+import { EquitoService } from './equito.service';
+import { ReentalService } from './reental';
 export const BlockchainAppsServices = Symbol('BlockchainAppsServices');
 @Module({
   imports: [ServiceModule],
@@ -15,10 +17,26 @@ export const BlockchainAppsServices = Symbol('BlockchainAppsServices');
         loftyService: LoftyService,
         binaryxService: BinaryxService,
         oceanpointService: OceanpointService,
+        equitoService: EquitoService,
+        reentalService: ReentalService,
       ) => {
-        return [realtService, loftyService, binaryxService, oceanpointService];
+        return [
+          realtService,
+          loftyService,
+          binaryxService,
+          oceanpointService,
+          equitoService,
+          reentalService,
+        ];
       },
-      inject: [RealtService, LoftyService, BinaryxService, OceanpointService],
+      inject: [
+        RealtService,
+        LoftyService,
+        BinaryxService,
+        OceanpointService,
+        EquitoService,
+        ReentalService,
+      ],
     },
   ],
   exports: [BlockchainAppsServices],

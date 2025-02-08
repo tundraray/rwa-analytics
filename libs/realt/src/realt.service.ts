@@ -2,10 +2,10 @@ import { TokenModel, TokenService } from '@app/database';
 import { HolderService } from '@app/database';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Cron } from '@nestjs/schedule';
 import Bottleneck from 'bottleneck';
 import { ethers } from 'ethers';
-import { ISyncService } from '../types';
-import { RealtTokenModel } from './types';
+
 const CREATOR_ADDRESS = '0x5Fc96c182Bb7E0413c08e8e03e9d7EFc6cf0B099';
 
 const UNISWAP_ROUTER_ABI = [
@@ -13,7 +13,7 @@ const UNISWAP_ROUTER_ABI = [
 ];
 
 @Injectable()
-export class RealtService implements ISyncService {
+export class RealtService {
   private readonly logger = new Logger(RealtService.name);
   private httpProvider: ethers.JsonRpcProvider;
   private provider: ethers.Provider;
@@ -38,100 +38,6 @@ export class RealtService implements ISyncService {
     // Use WebSocket provider by default, fallback to HTTP
     this.provider = this.httpProvider;
   }
-  async syncHolders(): Promise<void> {
-    const tokens = await this.tokenService.listLastSyncedTokens(3);
-    await Promise.all(tokens.map((token) => this.syncToken(token)));
-  }
-
-  private async syncToken(token: TokenModel) {
-    try {
-      await this.updateTokenHolders(token);
-      await this.tokenService.updateLastSyncedAt(token.id);
-    } catch (error) {
-      this.logger.error(`holders[${token.tokenAddress}]: ${error.message}`);
-    }
-  }
-
-  async syncTokens(): Promise<void> {
-    this.logger.log('🔍 Searching for REALTOKEN tokens on Gnosis Chain...');
-
-    const tokenInfos = await this.getTokenInfos();
-    try {
-      const logs = await this.provider.getLogs({
-        fromBlock: 'earliest',
-        toBlock: 'latest',
-        topics: [
-          '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925',
-          ethers.zeroPadValue(CREATOR_ADDRESS, 32),
-        ],
-      });
-
-      if (logs.length === 0) {
-        this.logger.log('❌ No tokens found.');
-        return;
-      }
-
-      this.logger.log(`✅ Found ${logs.length} logs.`);
-
-      const uniqueAddresses = logs.reduce(
-        (acc, log) => {
-          acc[log.address] = log;
-          return acc;
-        },
-        {} as Record<string, ethers.Log>,
-      );
-      this.logger.log(
-        `✅ Found ${Object.keys(uniqueAddresses).length} unique addresses.`,
-      );
-
-      const tokensFromApi: string[] = tokenInfos
-        .map((token) => token.gnosisContract)
-        .filter(Boolean) as string[];
-      const tokenFromEth = Object.keys(uniqueAddresses);
-      const tokensToUpdate = tokensFromApi.filter(
-        (token) => !tokenFromEth.includes(token),
-      );
-
-      await Promise.all(
-        Object.entries(uniqueAddresses).map(([contractAddress]) => {
-          const tokenInfo = tokenInfos.find(
-            (token) => token.gnosisContract == contractAddress,
-          );
-          return this.indexerLimiter.schedule(() =>
-            this.updateToken(contractAddress, tokenInfo),
-          );
-        }),
-      );
-
-      await Promise.all(
-        tokensToUpdate.map((contractAddress) => {
-          const tokenInfo = tokenInfos.find(
-            (token) => token.gnosisContract == contractAddress,
-          );
-          return this.indexerLimiter.schedule(() =>
-            this.updateToken(contractAddress, tokenInfo),
-          );
-        }),
-      );
-    } catch (error) {
-      this.logger.error('🚨 Error syncing tokens:', error);
-      throw error;
-    }
-  }
-
-  private async getTokenInfos() {
-    try {
-      const tokenInfo = await fetch(
-        'https://dashboard.realtoken.community/api/properties',
-      );
-      const tokenInfoJson: RealtTokenModel[] = await tokenInfo.json();
-      return tokenInfoJson;
-    } catch (error) {
-      this.logger.error('🚨 Error getting token infos:', error);
-      return [];
-    }
-  }
-
   async parseAddLiquidityTransaction(txHash: string) {
     try {
       const tx = await this.provider.getTransaction(txHash);
@@ -190,7 +96,7 @@ export class RealtService implements ISyncService {
       // Формируем JSON-объект
       const result = {
         transactionHash: tx.hash,
-        blockNumber: tx.blockNumber,
+        blockNumber: await tx.blockNumber,
         timestamp: new Date(
           Number(decodedData.args.deadline) * 1000,
         ).toISOString(),
@@ -251,17 +157,66 @@ export class RealtService implements ISyncService {
     }
   }
 
-  private async updateToken(
-    contractAddress: string,
-    tokenInfo: RealtTokenModel | undefined,
-  ) {
+  @Cron('* * 0 * * *', {
+    name: 'realt-sync',
+  })
+  async sync(): Promise<void> {
+    this.logger.log('🔍 Searching for REALTOKEN tokens on Gnosis Chain...');
+
     try {
-      if (tokenInfo) {
-        this.logger.debug(
-          `Updating token ${contractAddress} ${tokenInfo.symbol}`,
-        );
+      const logs = await this.provider.getLogs({
+        fromBlock: 'earliest',
+        toBlock: 'latest',
+        topics: [
+          '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925',
+          ethers.zeroPadValue(CREATOR_ADDRESS, 32),
+        ],
+      });
+
+      if (logs.length === 0) {
+        this.logger.log('❌ No tokens found.');
+        return;
       }
-      const tokenContract = this.getContract(contractAddress);
+
+      this.logger.log(`✅ Found ${logs.length} logs.`);
+
+      const uniqueAddresses = logs.reduce(
+        (acc, log) => {
+          acc[log.address] = log;
+          return acc;
+        },
+        {} as Record<string, ethers.Log>,
+      );
+      this.logger.log(`✅ Found ${uniqueAddresses.length} unique addresses.`);
+
+      await Promise.all(
+        Object.entries(uniqueAddresses).map(([contractAddress, log]) => {
+          //this.logger.debug(log.toJSON());
+          return this.indexerLimiter.schedule(() =>
+            this.updateToken(contractAddress),
+          );
+        }),
+      );
+    } catch (error) {
+      this.logger.error('🚨 Error syncing tokens:', error);
+      throw error;
+    }
+  }
+  private async updateToken(contractAddress: string) {
+    try {
+      const tokenContract = new ethers.Contract(
+        contractAddress,
+        [
+          'function priceOracle() external view returns (address)',
+          'function name() view returns (string)',
+          'function symbol() view returns (string)',
+          'function decimals() view returns (uint8)',
+          'function totalSupply() view returns (uint256)',
+          'function balanceOf(address) view returns (uint256)',
+          'function owner() view returns (address)',
+        ],
+        this.provider,
+      );
 
       const name = await tokenContract.name();
       const symbol = await tokenContract.symbol();
@@ -272,33 +227,35 @@ export class RealtService implements ISyncService {
         const owner = await tokenContract.owner();
         const priceOracle = await tokenContract.priceOracle();
         // Track unique holders
-
+        const price = await this.getPrice(priceOracle);
         const token = await this.tokenService.findOrCreate({
-          tokenAddress: contractAddress,
-          applicationId: 3,
+          tokenId: contractAddress,
           network: 'gnosis',
           name: name.toString(),
-          symbol: symbol.toString(),
           isGlobalToken: false,
-          totalSupply: BigInt(
-            parseInt(ethers.formatUnits(totalSupply, decimals)) || 0,
-          ),
+          totalSupply: parseInt(ethers.formatUnits(totalSupply, decimals)),
           decimals: decimals,
           creator: owner,
           description: '',
-          tokenAdditionalInfo: tokenInfo
-            ? JSON.stringify(tokenInfo)
-            : undefined,
         });
-        //await this.syncPrice(priceOracle, token);
-        //await this.updateTokenHolders(token, tokenContract, contractAddress);
+        this.logger.debug(
+          `\n=== ${name} ===\n` +
+            `Symbol: ${symbol}\n` +
+            `Contract: ${contractAddress}\n` +
+            `Price Oracle: ${priceOracle}\n` +
+            `Decimals: ${decimals}\n` +
+            `Price: ${price}\n` +
+            `Total Supply: ${ethers.formatUnits(totalSupply, decimals)}\n` +
+            `Owner: ${owner}\n`,
+        );
+        await this.updateTokenHolders(token, tokenContract, contractAddress);
       }
     } catch (error) {
-      this.logger.error(`Error syncing token ${contractAddress}:`, error);
+      this.logger.debug(`Error syncing token ${contractAddress}:`, error);
     }
   }
 
-  async syncPrice(priceOracle: string, token: TokenModel) {
+  async getPrice(priceOracle: string) {
     try {
       const oracleContract = new ethers.Contract(
         priceOracle,
@@ -314,62 +271,52 @@ export class RealtService implements ISyncService {
       const price = await oracleContract.latestAnswer();
       const decimals = await oracleContract.multiFactor();
       return parseInt(price) / parseInt(decimals);
-    } catch (error) {
-      this.logger.error(
-        `Error getting price for #${token.name} ${priceOracle} :`,
-        error.message,
-      );
+    } catch {
+      this.logger.error(`Error getting price for ${priceOracle}`);
       return 0;
     }
   }
 
-  async updateTokenHolders(token: TokenModel): Promise<void> {
-    const tokenContract = this.getContract(token.tokenAddress);
-    const transferEvents = await this.provider.getLogs({
-      fromBlock: 'earliest',
-      toBlock: 'latest',
-      address: token.tokenAddress,
-      topics: [ethers.id('Transfer(address,address,uint256)')],
-    });
+  async updateTokenHolders(
+    token: TokenModel,
+    tokenContract: ethers.Contract,
+    contractAddress: string,
+  ): Promise<void> {
+    try {
+      const transferEvents = await this.provider.getLogs({
+        fromBlock: 'earliest',
+        toBlock: 'latest',
+        address: contractAddress,
+        topics: [ethers.id('Transfer(address,address,uint256)')],
+      });
 
-    // Собираем уникальные адреса
-    const holders = new Set<string>();
+      // Собираем уникальные адреса
+      const holders = new Set<string>();
 
-    for (const event of transferEvents) {
-      const from = ethers.dataSlice(event.topics[1], 12); // получаем адрес отправителя
-      const to = ethers.dataSlice(event.topics[2], 12); // получаем адрес получателя
+      for (const event of transferEvents) {
+        const from = ethers.dataSlice(event.topics[1], 12); // получаем адрес отправителя
+        const to = ethers.dataSlice(event.topics[2], 12); // получаем адрес получателя
 
-      if (from !== ethers.ZeroAddress) holders.add(from);
-      if (to !== ethers.ZeroAddress) holders.add(to);
-    }
+        if (from !== ethers.ZeroAddress) holders.add(from);
+        if (to !== ethers.ZeroAddress) holders.add(to);
+      }
 
-    // Получаем decimals для форматирования
-    const decimals = await tokenContract.decimals();
+      // Получаем decimals для форматирования
+      const decimals = await tokenContract.decimals();
 
-    // Параллельное обновление холдеров
-    await Promise.all(
-      Array.from(holders).map((holder) =>
-        this.indexerLimiter.schedule(() =>
-          this.updateHolder(tokenContract, holder, token, decimals),
+      this.logger.debug(`holders[${contractAddress}]: ${holders.size}`);
+
+      // Параллельное обновление холдеров
+      await Promise.all(
+        Array.from(holders).map((holder) =>
+          this.indexerLimiter.schedule(() =>
+            this.updateHolder(tokenContract, holder, token, decimals),
+          ),
         ),
-      ),
-    );
-  }
-
-  private getContract(contractAddress: string): ethers.Contract {
-    return new ethers.Contract(
-      contractAddress,
-      [
-        'function priceOracle() external view returns (address)',
-        'function name() view returns (string)',
-        'function symbol() view returns (string)',
-        'function decimals() view returns (uint8)',
-        'function totalSupply() view returns (uint256)',
-        'function balanceOf(address) view returns (uint256)',
-        'function owner() view returns (address)',
-      ],
-      this.provider,
-    );
+      );
+    } catch (error) {
+      this.logger.error(`holders[${contractAddress}]`, error);
+    }
   }
 
   private async updateHolder(
@@ -378,21 +325,25 @@ export class RealtService implements ISyncService {
     token: TokenModel,
     decimals: any,
   ) {
-    const balance = await tokenContract.balanceOf(holder);
-    if (balance != null) {
-      try {
-        await this.holderService.findOrCreate({
-          tokenId: token.id,
-          address: holder,
-          balance: parseInt(ethers.formatUnits(balance, decimals)),
-          deleted: false,
-        });
-        this.logger.debug(
-          `holder[${holder}]: ${token.id} ${parseInt(ethers.formatUnits(balance, decimals))}`,
-        );
-      } catch (dbError) {
-        this.logger.error(`holder[${holder}]: ${token.id}:`, dbError);
+    try {
+      const balance = await tokenContract.balanceOf(holder);
+      if (balance != null) {
+        try {
+          await this.holderService.findOrCreate({
+            tokenId: token.id,
+            address: holder,
+            balance: parseInt(ethers.formatUnits(balance, decimals)),
+            deleted: false,
+          });
+          this.logger.debug(
+            `holder[${holder}]: ${token.id} ${parseInt(ethers.formatUnits(balance, decimals))}`,
+          );
+        } catch (dbError) {
+          this.logger.error(`holder[${holder}]: ${token.id}:`, dbError);
+        }
       }
+    } catch (contractError) {
+      this.logger.error(`holder[${holder}]: ${token.id}:`, contractError);
     }
   }
 }

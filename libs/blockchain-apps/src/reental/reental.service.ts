@@ -5,13 +5,13 @@ import { ConfigService } from '@nestjs/config';
 import Bottleneck from 'bottleneck';
 import { ethers } from 'ethers';
 import { ISyncService } from '../types';
-import { OceanpointTokenModel } from './types';
-// const CREATOR_ADDRESS = '0x6e074b3aA4B1fDDDa2b0FCb6B4c4C70875B548B3';
-const applicationId = 4;
+import { Item, ReentalResponse } from './types';
+//const CREATOR_ADDRESS = '0x74fF5b71C043645ceDe9cacA31a693F8CF819fB5';
+const applicationId = 6;
 
 @Injectable()
-export class OceanpointService implements ISyncService {
-  private readonly logger = new Logger(OceanpointService.name);
+export class ReentalService implements ISyncService {
+  private readonly logger = new Logger(ReentalService.name);
   private httpProvider: ethers.JsonRpcProvider;
   private provider: ethers.Provider;
   private indexerLimiter: Bottleneck;
@@ -21,10 +21,7 @@ export class OceanpointService implements ISyncService {
     private readonly holderService: HolderService,
   ) {
     this.httpProvider = new ethers.JsonRpcProvider(
-      this.configService.get(
-        'ETHEREUM_HTTP_RPC_URL',
-        'https://rpc.ankr.com/eth',
-      ),
+      this.configService.get('POLYGON_HTTP_RPC_URL', 'https://polygon-rpc.com'),
     );
 
     // 30 reqs/sec
@@ -56,23 +53,20 @@ export class OceanpointService implements ISyncService {
   }
 
   async syncTokens(): Promise<void> {
-    this.logger.log('🔍 Searching for OCEANPOINT tokens on Ethereum...');
+    this.logger.log('🔍 Searching for REENTAL tokens on Polygon...');
 
     const tokenInfos = await this.getTokenInfos();
+    this.logger.log(`Found ${tokenInfos.length} tokens`);
     try {
-      const logs = await this.indexerLimiter.schedule(
-        () =>
-          this.provider.getLogs({
-            fromBlock: 'earliest',
-            toBlock: 'latest',
-            topics: [
-              '0x2c28e98235d90a5a66515fabbc6913ccdd057477d7d54a1e276f03cd3ed1921e',
-            ],
-          }),
-        {
-          priority: 2,
-        },
-      );
+      const logs = (
+        await this.provider.getLogs({
+          fromBlock: 'earliest',
+          toBlock: 'latest',
+          topics: [
+            '0xed93bcc1017e3f19794bfdf2fe5184a39a268e8a4540c3da97fb484ca9e842bc',
+          ],
+        })
+      ).filter((log) => log.topics.length === 3);
 
       if (logs.length === 0) {
         this.logger.log('❌ No tokens found.');
@@ -96,17 +90,23 @@ export class OceanpointService implements ISyncService {
       const tokensToUpdate = tokensFromApi.filter(
         (token) => !tokenFromEth.includes(token),
       );
+      for (const contractAddress of tokensToUpdate) {
+        const tokenInfo = tokenInfos.find(
+          (token) => token.token.address === contractAddress,
+        );
 
-      await Promise.all(
-        Object.entries(uniqueAddresses).map(([contractAddress]) => {
-          const tokenInfo = tokenInfos.find(
-            (token) => token.token.address === contractAddress,
-          );
+        await this.updateToken(contractAddress, tokenInfo);
+      }
 
-          return this.updateToken(contractAddress, tokenInfo);
-        }),
-      );
+      for (const [contractAddress] of Object.entries(uniqueAddresses)) {
+        const tokenInfo = tokenInfos.find(
+          (token) => token.token.address === contractAddress,
+        );
 
+        await this.updateToken(contractAddress, tokenInfo);
+      }
+
+      /*
       await Promise.all(
         tokensToUpdate.map((contractAddress) => {
           const tokenInfo = tokenInfos.find(
@@ -115,26 +115,45 @@ export class OceanpointService implements ISyncService {
 
           return this.updateToken(contractAddress, tokenInfo);
         }),
-      );
+        
+      );*/
     } catch (error) {
-      this.logger.error('🚨 Error syncing tokens:', error);
+      this.logger.error(`🚨 Error syncing tokens: ${error.message}`);
       throw error;
     }
   }
 
   private async getTokenInfos() {
     try {
-      const tokenInfo = await fetch(
-        'https://app.blocksquare.io/api/property?type=MARKETPLACE',
-        {
-          headers: {
-            Authorization:
-              'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2Jsb2Nrc3F1YXJlLmlvIiwiZXhwIjoxNzM5MTM4NTYyLCJ1cG4iOiJhbGwtaGltaWtAeWEucnUiLCJhdXRoX3RpbWUiOjE3Mzg5NjU3NjIsImdyb3VwcyI6WyJST0xFX1VTRVIiXSwiY29tcGFueSI6Im9jZWFucG9pbnQiLCJpYXQiOjE3Mzg5NjU3NjIsImp0aSI6IjlkZGYxZDg1LTM4OTEtNGE3MC04MDg5LWMyZTM3OTdiMzBkMCJ9.vmoRzc-0ypoRqupxvqmGdTPAESbmL9oL6nKiCFQlscrVVch-RYUZ6-i7PzD-Wx4TBXpbphMqTZQOnt8uMKKQY7DVQLlW-cy5D32qbDFnlqMhNhpLT-G9lAmhQsRMtlgNuQvR6xTr2LdQcyHTb3-GUenNx4VwjSRe5JXHnQ58y7FzZZ7WAZIYe4ZQIYmqelD9L6uDP6S7L20RmANURvbJV5xXyVwKmPQVFXLSa4Ij8SiPqyHqZQmZjlKP_1P9mVXzrtTexVYFyq3IaKx7rcY-xe9uixa7Fu_rQYP91Q1m-ZFTjMcbKGmO3C0tNQAIqVtSgeRSm20PNFwVzWHUxr634g',
-          },
+      const tokenInfo = await fetch('https://backend.reental.co/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      );
-      const tokenInfoJson: OceanpointTokenModel[] = await tokenInfo.json();
-      return tokenInfoJson;
+        body: JSON.stringify({
+          query:
+            '\n\t\t\t\tquery GETPROPERTIES_QUERY($input: GetPropertiesInput!) {\n    getPublicProperties(input: $input) {\n      __typename\n      ... on PropertyAssets {\n          items {\n            externalStatus\n            _id\n            name\n            slug\n            status\n            description_es\n            description_en\n            images {\n                id\n                name\n                type\n                size\n                keyS3\n                url\n            }\n            address\n            locality\n            administrative_area_level_2\n            administrative_area_level_1\n            country\n            geo {\n                lat\n                lng\n            }\n            tokenPrice {\n                value\n                currency\n            }\n            amount {\n                value\n                currency\n            }\n            minInvestmentTokens\n            netYearlyBenefit {\n                value\n                currency\n            }\n            emittedTokens\n            saleProfitability\n            apr\n            gains\n            netSale\n            aprNetSale\n            saleProfitability\n            starts_on\n            closingDate\n            dividends_starts_on\n            dividends\n            tokenName\n            investmentDuration {value, period}\n            typeOfSale\n            docs_es {\n                id\n                name\n                type\n                size\n                keyS3\n                url\n                title\n            }\n            docs_en {\n                id\n                name\n                type\n                size\n                keyS3\n                url\n                title\n            }\n            token {\n                id\n                hashId\n                whitelistId\n                address\n                name\n                symbol\n                totalSupply\n                maxSupply\n                reservedSupply\n                nWallets\n                price\n                wallets\n                status\n                sold\n            }\n            whitelist {\n                _id\n                name\n                hashId\n                tokens\n                wallets\n                isGlobal\n            }\n          }\n      metadata {\n              numElements\n              offset\n              limit\n              page\n              pages\n              orderBy\n              orderDirection\n          }\n      }\n      ... on Error {\n          code\n          message\n          description\n      }\n    }\n  }\n\t\t\t',
+          variables: {
+            input: {
+              fields: [
+                'name',
+                'address',
+                'country',
+                'description_en',
+                'description_es',
+              ],
+              search: '',
+              orderBy: 'starts_on',
+              orderDirection: 'DESC',
+              limit: 2000,
+              offset: 0,
+              hidePrivate: false,
+            },
+          },
+        }),
+      });
+      const tokenInfoJson: ReentalResponse = await tokenInfo.json();
+      return tokenInfoJson.data.getPublicProperties.items;
     } catch (error) {
       this.logger.error('🚨 Error getting token infos:', error);
       return [];
@@ -143,38 +162,18 @@ export class OceanpointService implements ISyncService {
 
   private async updateToken(
     contractAddress: string,
-    tokenInfo: OceanpointTokenModel | undefined,
+    tokenInfo: Item | undefined,
   ) {
     try {
       const tokenContract = this.getContract(contractAddress);
 
       const symbol = await tokenContract.symbol();
 
-      if (symbol.startsWith('BSPT')) {
-        const name = await this.indexerLimiter.schedule(
-          () => tokenContract.name(),
-          {
-            priority: 1,
-          },
-        );
-        const decimals = await this.indexerLimiter.schedule(
-          () => tokenContract.decimals(),
-          {
-            priority: 1,
-          },
-        );
-        const totalSupply = await this.indexerLimiter.schedule(
-          () => tokenContract.totalSupply(),
-          {
-            priority: 1,
-          },
-        );
-        const owner = await this.indexerLimiter.schedule(
-          () => tokenContract.owner(),
-          {
-            priority: 1,
-          },
-        );
+      if (symbol.startsWith('Reental')) {
+        const name = await tokenContract.name();
+        const decimals = await tokenContract.decimals();
+        const totalSupply = await tokenContract.totalSupply();
+
         // Track unique holders
         if (!tokenInfo) {
           this.logger.debug(`Token info not found for ${contractAddress}`);
@@ -182,7 +181,7 @@ export class OceanpointService implements ISyncService {
         await this.tokenService.findOrCreate({
           tokenAddress: contractAddress,
           applicationId: applicationId,
-          network: 'ethereum',
+          network: 'polygon',
           name: name.toString(),
           symbol: symbol.toString(),
           isGlobalToken: false,
@@ -190,7 +189,6 @@ export class OceanpointService implements ISyncService {
             parseInt(ethers.formatUnits(totalSupply, decimals)) || 0,
           ),
           decimals: decimals,
-          creator: owner,
           description: '',
           tokenAdditionalInfo: tokenInfo
             ? JSON.stringify(tokenInfo)
@@ -198,9 +196,13 @@ export class OceanpointService implements ISyncService {
         });
         //await this.syncPrice(priceOracle, token);
         //await this.updateTokenHolders(token, tokenContract, contractAddress);
+      } else {
+        this.logger.debug(`Token ${contractAddress} is not a Reental token`);
       }
     } catch (error) {
-      this.logger.error(`Error syncing token ${contractAddress}:`, error);
+      this.logger.error(
+        `Error syncing token ${contractAddress}: ${error.message}`,
+      );
     }
   }
 
@@ -241,9 +243,13 @@ export class OceanpointService implements ISyncService {
         priority: 1,
       },
     );
-    for (const holder of holders) {
-      await this.updateHolder(tokenContract, holder, token, decimals);
-    }
+
+    // Параллельное обновление холдеров
+    await Promise.all(
+      Array.from(holders).map((holder) =>
+        this.updateHolder(tokenContract, holder, token, decimals),
+      ),
+    );
   }
 
   private getContract(contractAddress: string): ethers.Contract {
@@ -255,7 +261,6 @@ export class OceanpointService implements ISyncService {
         'function decimals() view returns (uint8)',
         'function totalSupply() view returns (uint256)',
         'function balanceOf(address) view returns (uint256)',
-        'function owner() view returns (address)',
       ],
       this.provider,
     );

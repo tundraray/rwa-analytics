@@ -1,12 +1,11 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
-import { OceanpointService } from '@app/blockchain-apps/oceanpoint';
-
+import { RealtService } from '@app/blockchain-apps';
 @Controller()
 export class AppController {
   constructor(
     private readonly appService: AppService,
-    private readonly oceanpointService: OceanpointService,
+    private readonly realtService: RealtService,
   ) {}
 
   @Get()
@@ -16,6 +15,6 @@ export class AppController {
 
   @Get('oceanpoint')
   getOceanpoint(): Promise<void> {
-    return this.oceanpointService.syncHolders();
+    return this.realtService.syncTokens();
   }
 }

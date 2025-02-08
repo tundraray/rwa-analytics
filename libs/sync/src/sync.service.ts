@@ -25,7 +25,7 @@ export class SyncService {
   }
 
   // Run every 1 minute
-  @Cron(CronExpression.EVERY_MINUTE, {
+  @Cron(CronExpression.EVERY_5_MINUTES, {
     name: 'sync-blockchain-holders',
     waitForCompletion: true,
   })

@@ -35,7 +35,7 @@ export class TokenService {
     const tokens = await this.tokenModel.findAll({
       where: {
         applicationId,
-        lastSyncedAt: { [Op.lt]: new Date(Date.now() - 1 * 60 * 60 * 1000) },
+        lastSyncedAt: { [Op.lt]: new Date(Date.now() - 5 * 60 * 60 * 1000) },
       },
       order: [['lastSyncedAt', 'DESC']],
       limit: 100,
